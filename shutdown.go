@@ -8,7 +8,7 @@ import (
 )
 
 type (
-	settings struct {
+	opts struct {
 		Signals []os.Signal
 
 		KillErr error
@@ -21,19 +21,20 @@ type (
 		CancelContext bool
 	}
 
-	option func(o *settings)
+	Option func(o *opts)
 )
 
 var ErrKilled = errors.New("killed")
 
-func Shutdown(ctx context.Context, run func(ctx context.Context) error, ops ...option) error {
+func Shutdown(ctx context.Context, run func(ctx context.Context) error, ops ...Option) error {
 	errc := make(chan error, 2)
 	sigc := make(chan os.Signal, 1)
 
-	s := settings{
-		Signals:    []os.Signal{os.Interrupt},
-		KillErr:    ErrKilled,
-		ForceIters: 3,
+	s := opts{
+		Signals:       []os.Signal{os.Interrupt},
+		KillErr:       ErrKilled,
+		ForceIters:    3,
+		CancelContext: true,
 	}
 
 	for _, o := range ops {
@@ -68,7 +69,7 @@ func Shutdown(ctx context.Context, run func(ctx context.Context) error, ops ...o
 			s.Stop()
 		}
 
-		for i := 0; i < s.ForceIters; i++ {
+		for i := s.ForceIters - 1; i >= 0; i-- {
 			<-sigc
 
 			if s.ForceStop != nil {
@@ -76,38 +77,40 @@ func Shutdown(ctx context.Context, run func(ctx context.Context) error, ops ...o
 			}
 		}
 
+		<-sigc
+
 		errc <- s.KillErr
 	}()
 
 	return <-errc
 }
 
-func WithSignals(sig ...os.Signal) option {
-	return func(o *settings) {
+func WithSignals(sig ...os.Signal) Option {
+	return func(o *opts) {
 		o.Signals = sig
 	}
 }
 
-func WithCancelContext() option {
-	return func(o *settings) {
-		o.CancelContext = true
+func WithCancelContext(c bool) Option {
+	return func(o *opts) {
+		o.CancelContext = c
 	}
 }
 
-func WithStop(stop func()) option {
-	return func(o *settings) {
+func WithStop(stop func()) Option {
+	return func(o *opts) {
 		o.Stop = stop
 	}
 }
 
-func WithForceStop(stop func(int)) option {
-	return func(o *settings) {
+func WithForceStop(stop func(int)) Option {
+	return func(o *opts) {
 		o.ForceStop = stop
 	}
 }
 
-func WithForceIterations(n int) option {
-	return func(o *settings) {
+func WithForceIterations(n int) Option {
+	return func(o *opts) {
 		o.ForceIters = n
 	}
 }
