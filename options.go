@@ -58,23 +58,36 @@ func WithForceStop(f func(context.Context, int)) Option {
 	}
 }
 
-func WithCancelContext() Option {
+func WithNoCancelContext() Option {
 	return taskOpt{
 		baseOpt: optFunc(0),
 		f: func(t *task) {
-			t.ctx, t.cancel = context.WithCancel(t.ctx)
+			t.cancel = func() {}
 		},
 	}
 }
 
-func WithAllowStop() Option {
+func WithAllowStop(evenError bool) Option {
 	return taskOpt{
 		baseOpt: optFunc(0),
 		f: func(t *task) {
-			t.allowStop = true
+			if evenError {
+				t.allowStop = 2
+			} else {
+				t.allowStop = 1
+			}
 		},
 	}
 }
+
+//func WithStopCallback(f func(ctx context.Context, err error)) Option {
+//	return taskOpt{
+//		baseOpt: optFunc(0),
+//		f: func(t *task) {
+//			t.stopCb = f
+//		},
+//	}
+//}
 
 func (o taskOpt) taskOpt(t *task) {
 	if o.f == nil {

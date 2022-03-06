@@ -23,6 +23,7 @@ type (
 	task struct {
 		name string
 		ctx  context.Context
+		mctx *multicontext
 
 		// set by user
 		run       func(ctx context.Context) error
@@ -32,7 +33,8 @@ type (
 		// context
 		cancel func()
 
-		allowStop bool
+		allowStop int // 0 - don't, 1 - allow with nil error, 2 - allow with error
+		//	stopCb    func(ctx context.Context, err error)
 
 		done chan struct{}
 	}
@@ -66,128 +68,133 @@ func (g *Group) Add(ctx context.Context, name string, run func(context.Context) 
 		}
 	}
 
+	if t.cancel == nil {
+		t.ctx, t.cancel = context.WithCancel(t.ctx)
+	}
+
 	g.tasks = append(g.tasks, t)
 }
 
+/*
+Plan:
+    * Run all tasts concurrently
+    * Wait for the first to finish
+    * Stop all other tasts (cancel context)
+    * Wait for all tasts to finish
+    * Kill if not finished
+	* Return the first non-nil error (or nil)
+
+If one of Group.Signals is received all tasks are stopped.
+If Group.ForceIters more signals received Group.Run returns immediately.
+*/
 func (g *Group) Run(ctx context.Context, opts ...Option) (err error) {
-	if len(g.tasks) == 0 {
-		return g.NoTasksErr
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	default:
 	}
 
-	errc := make(chan error, 1)
+	errc := make(chan error, len(g.tasks))
 
 	for _, t := range g.tasks {
 		t := t
+
 		go func() {
 			defer close(t.done)
 
-			err := t.run(t.ctx)
+			ctx := multi(t.ctx, ctx)
 
-			if t.name != "" {
-				err = errors.Wrap(err, t.name)
-			}
+			err := t.run(ctx)
 
-			select {
-			case errc <- err:
-			default: // only first error matters
-			}
-		}()
-	}
+			//	if t.stopCb != nil {
+			//		t.stopCb(ctx, err)
+			//	}
 
-	var killc chan struct{}
-	if g.Signals != nil {
-		fin := make(chan struct{})
-		defer close(fin) // to allow goroutine to finish
-
-		killc = g.sigTask(errc, fin)
-	}
-
-	for _, t := range g.tasks {
-		select {
-		case <-t.done:
-		case <-killc:
-		}
-	}
-
-	return <-errc
-}
-
-func (g *Group) sigTask(errc chan error, fin chan struct{}) (kill chan struct{}) {
-	sigc := make(chan os.Signal, 1)
-	kill = make(chan struct{})
-
-	signal.Notify(sigc, g.Signals...)
-
-	go func() {
-		select {
-		case <-sigc:
-		case <-fin:
-			return
-		}
-
-		err := g.stop()
-
-		if err != nil {
-			select {
-			case errc <- err:
-			default: // only first error matters
-			}
-		}
-
-		for i := g.ForceIters - 1; i >= 0; i-- {
-			select {
-			case <-sigc:
-			case <-fin:
+			if t.allowStop > 1 || t.allowStop > 0 && err == nil {
 				return
 			}
 
-			g.forceStop(i)
+			err = errors.Wrap(err, t.name)
+
+			errc <- err
+		}()
+	}
+
+	var sigc chan os.Signal
+	if len(g.Signals) != 0 {
+		sigc = make(chan os.Signal, 1)
+
+		signal.Notify(sigc, g.Signals...)
+		defer signal.Stop(sigc)
+	}
+
+	select {
+	case err = <-errc:
+	case <-ctx.Done():
+		err = ctx.Err()
+	case <-sigc:
+	}
+
+	e := g.stop()
+	if err == nil {
+		err = e
+	}
+
+	toKill := g.ForceIters
+
+next:
+	for _, t := range g.tasks {
+		for {
+			select {
+			case <-t.done:
+				continue next
+			case <-sigc:
+			}
+
+			if toKill == 0 {
+				continue next
+			}
+
+			toKill--
+
+			g.forceStop(toKill)
 		}
+	}
 
-		select {
-		case <-sigc:
-		case <-fin:
-			return
-		}
+	for err == nil && len(errc) != 0 {
+		err = <-errc
+	}
 
-		close(kill)
-
-		select {
-		case errc <- g.KillErr:
-		case <-fin:
-		}
-	}()
-
-	return
+	return err
 }
 
-func (g *Group) stop() error {
+func (g *Group) stop() (err error) {
 	for _, t := range g.tasks {
-		if t.cancel != nil {
-			t.cancel()
-		}
+		t.cancel()
 
 		if t.stop == nil {
 			continue
 		}
 
-		err := t.stop(t.ctx)
-		if err != nil {
-			if t.name != "" {
-				err = errors.Wrap(err, t.name)
-			}
-
-			return err
+		e := t.stop(t.mctx)
+		if err == nil {
+			err = errors.Wrap(e, "stop: %v", t.name)
 		}
 	}
 
-	return nil
+	return err
 }
 
 func (g *Group) forceStop(i int) {
 	for _, t := range g.tasks {
+		select {
+		case <-t.done:
+			continue
+		default:
+		}
+
 		if t.forceStop != nil {
-			t.forceStop(t.ctx, i)
+			t.forceStop(t.mctx, i)
 		}
 	}
 }
