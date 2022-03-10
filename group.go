@@ -14,16 +14,14 @@ type (
 
 		ForceIters int
 
-		KillErr    error
-		NoTasksErr error
+		KillErr error
+		//	NoTasksErr error
 
 		tasks []task
 	}
 
 	task struct {
-		name string
-		ctx  context.Context
-		mctx *multicontext
+		//	name string
 
 		// set by user
 		run       func(ctx context.Context) error
@@ -31,10 +29,9 @@ type (
 		forceStop func(ctx context.Context, i int)
 
 		// context
-		cancel func()
+		//	cancel func()
 
 		allowStop int // 0 - don't, 1 - allow with nil error, 2 - allow with error
-		//	stopCb    func(ctx context.Context, err error)
 
 		done chan struct{}
 	}
@@ -47,17 +44,17 @@ var (
 
 func New() *Group {
 	return &Group{
-		Signals:    []os.Signal{os.Interrupt},
-		KillErr:    ErrKilled,
-		NoTasksErr: ErrNoTasks,
+		Signals: []os.Signal{os.Interrupt},
+		KillErr: ErrKilled,
+		//	NoTasksErr: ErrNoTasks,
 		ForceIters: 3,
 	}
 }
 
-func (g *Group) Add(ctx context.Context, name string, run func(context.Context) error, opts ...Option) {
+func (g *Group) Add(run func(context.Context) error, opts ...Option) {
 	t := task{
-		name: name,
-		ctx:  ctx,
+		//	name: name,
+		//	ctx:  ctx,
 		run:  run,
 		done: make(chan struct{}),
 	}
@@ -68,9 +65,9 @@ func (g *Group) Add(ctx context.Context, name string, run func(context.Context) 
 		}
 	}
 
-	if t.cancel == nil {
-		t.ctx, t.cancel = context.WithCancel(t.ctx)
-	}
+	//	if t.cancel == nil {
+	//		t.ctx, t.cancel = context.WithCancel(t.ctx)
+	//	}
 
 	g.tasks = append(g.tasks, t)
 }
@@ -90,31 +87,31 @@ If Group.ForceIters more signals received Group.Run returns immediately.
 func (g *Group) Run(ctx context.Context, opts ...Option) (err error) {
 	select {
 	case <-ctx.Done():
-		return ctx.Err()
+		return nil
+	//	return ctx.Err()
 	default:
 	}
 
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
 	errc := make(chan error, len(g.tasks))
 
-	for _, t := range g.tasks {
-		t := t
+	for i := range g.tasks {
+		t := &g.tasks[i]
 
 		go func() {
 			defer close(t.done)
 
-			ctx := multi(t.ctx, ctx)
+			//	t.mctx = multi(t.ctx, ctx)
 
 			err := t.run(ctx)
-
-			//	if t.stopCb != nil {
-			//		t.stopCb(ctx, err)
-			//	}
 
 			if t.allowStop > 1 || t.allowStop > 0 && err == nil {
 				return
 			}
 
-			err = errors.Wrap(err, t.name)
+			//	err = errors.Wrap(err, t.name)
 
 			errc <- err
 		}()
@@ -131,11 +128,14 @@ func (g *Group) Run(ctx context.Context, opts ...Option) (err error) {
 	select {
 	case err = <-errc:
 	case <-ctx.Done():
-		err = ctx.Err()
+		err = nil
+	//	err = ctx.Err()
 	case <-sigc:
 	}
 
-	e := g.stop()
+	cancel()
+
+	e := g.stop(ctx)
 	if err == nil {
 		err = e
 	}
@@ -149,15 +149,14 @@ next:
 			case <-t.done:
 				continue next
 			case <-sigc:
+				toKill--
 			}
 
-			if toKill == 0 {
-				continue next
+			if toKill <= 0 {
+				break next
 			}
 
-			toKill--
-
-			g.forceStop(toKill)
+			g.forceStop(ctx, toKill)
 		}
 	}
 
@@ -165,27 +164,36 @@ next:
 		err = <-errc
 	}
 
+	if err == nil && toKill <= 0 {
+		err = g.KillErr
+	}
+
 	return err
 }
 
-func (g *Group) stop() (err error) {
+func (g *Group) stop(ctx context.Context) (err error) {
 	for _, t := range g.tasks {
-		t.cancel()
+		select {
+		case <-t.done:
+			continue
+		default:
+		}
 
 		if t.stop == nil {
 			continue
 		}
 
-		e := t.stop(t.mctx)
+		e := t.stop(ctx)
 		if err == nil {
-			err = errors.Wrap(e, "stop: %v", t.name)
+			err = e
+			//	err = errors.Wrap(e, "stop: %v", t.name)
 		}
 	}
 
 	return err
 }
 
-func (g *Group) forceStop(i int) {
+func (g *Group) forceStop(ctx context.Context, i int) {
 	for _, t := range g.tasks {
 		select {
 		case <-t.done:
@@ -194,7 +202,7 @@ func (g *Group) forceStop(i int) {
 		}
 
 		if t.forceStop != nil {
-			t.forceStop(t.mctx, i)
+			t.forceStop(ctx, i)
 		}
 	}
 }
