@@ -27,11 +27,10 @@ type (
 		run       func(ctx context.Context) error
 		stop      func(ctx context.Context) error
 		forceStop func(ctx context.Context, i int)
-
-		// context
-		//	cancel func()
-
 		allowStop int // 0 - don't, 1 - allow with nil error, 2 - allow with error
+
+		wrapError    string
+		ignoreErrors []error
 
 		done chan struct{}
 	}
@@ -103,15 +102,22 @@ func (g *Group) Run(ctx context.Context, opts ...Option) (err error) {
 		go func() {
 			defer close(t.done)
 
-			//	t.mctx = multi(t.ctx, ctx)
-
 			err := t.run(ctx)
 
 			if t.allowStop > 1 || t.allowStop > 0 && err == nil {
 				return
 			}
 
-			//	err = errors.Wrap(err, t.name)
+			for _, ie := range t.ignoreErrors {
+				if errors.Is(err, ie) {
+					err = nil
+					break
+				}
+			}
+
+			if t.wrapError != "" {
+				err = errors.Wrap(err, t.wrapError)
+			}
 
 			errc <- err
 		}()

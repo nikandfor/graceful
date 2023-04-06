@@ -58,7 +58,7 @@ func WithForceStop(f func(context.Context, int)) Option {
 	}
 }
 
-func WithAllowStop(evenError bool) Option {
+func AllowStop(evenError bool) Option {
 	return taskOpt{
 		baseOpt: optFunc(0),
 		f: func(t *task) {
@@ -67,6 +67,24 @@ func WithAllowStop(evenError bool) Option {
 			} else {
 				t.allowStop = 1
 			}
+		},
+	}
+}
+
+func WrapError(format string, args ...interface{}) Option {
+	return taskOpt{
+		baseOpt: optFunc(0),
+		f: func(t *task) {
+			t.wrapError = fmt.Sprintf(format, args...)
+		},
+	}
+}
+
+func IgnoreErrors(errs ...error) Option {
+	return taskOpt{
+		baseOpt: optFunc(0),
+		f: func(t *task) {
+			t.ignoreErrors = errs
 		},
 	}
 }
