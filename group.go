@@ -50,6 +50,8 @@ func New() *Group {
 	}
 }
 
+func Sub() *Group { return &Group{} }
+
 func (g *Group) Add(run func(context.Context) error, opts ...Option) {
 	t := task{
 		//	name: name,
@@ -58,15 +60,7 @@ func (g *Group) Add(run func(context.Context) error, opts ...Option) {
 		done: make(chan struct{}),
 	}
 
-	for _, o := range opts {
-		if o, ok := o.(taskOpter); ok {
-			o.taskOpt(&t)
-		}
-	}
-
-	//	if t.cancel == nil {
-	//		t.ctx, t.cancel = context.WithCancel(t.ctx)
-	//	}
+	g.applyOpts(&t, opts)
 
 	g.tasks = append(g.tasks, t)
 }
@@ -86,8 +80,7 @@ If Group.ForceIters more signals received Group.Run returns immediately.
 func (g *Group) Run(ctx context.Context, opts ...Option) (err error) {
 	select {
 	case <-ctx.Done():
-		return nil
-	//	return ctx.Err()
+		return g.ctxErr(ctx, opts)
 	default:
 	}
 
@@ -98,6 +91,8 @@ func (g *Group) Run(ctx context.Context, opts ...Option) (err error) {
 
 	for i := range g.tasks {
 		t := &g.tasks[i]
+
+		g.applyOpts(t, opts)
 
 		go func() {
 			defer close(t.done)
@@ -134,8 +129,6 @@ func (g *Group) Run(ctx context.Context, opts ...Option) (err error) {
 	select {
 	case err = <-errc:
 	case <-ctx.Done():
-		err = nil
-	//	err = ctx.Err()
 	case <-sigc:
 	}
 
@@ -174,7 +167,39 @@ next:
 		err = g.KillErr
 	}
 
+	if err == nil {
+		err = g.ctxErr(ctx, opts)
+	}
+
 	return err
+}
+
+func (g *Group) ctxErr(ctx context.Context, opts []Option) error {
+	var t task
+	g.applyOpts(&t, opts)
+
+	err := ctx.Err()
+
+	for _, ie := range t.ignoreErrors {
+		if errors.Is(err, ie) {
+			err = nil
+			break
+		}
+	}
+
+	if t.wrapError != "" {
+		err = errors.Wrap(err, t.wrapError)
+	}
+
+	return err
+}
+
+func (g *Group) applyOpts(t *task, opts []Option) {
+	for _, o := range opts {
+		if o, ok := o.(taskOpter); ok {
+			o.taskOpt(t)
+		}
+	}
 }
 
 func (g *Group) stop(ctx context.Context) (err error) {

@@ -5,11 +5,10 @@ import (
 	"testing"
 
 	"github.com/nikandfor/assert"
-	"github.com/nikandfor/assert/is"
 	"github.com/nikandfor/errors"
 )
 
-func TestGroupNoTasks(t *testing.T) {
+func TestGroupNoTasksErr(t *testing.T) {
 	var gr Group
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -17,6 +16,17 @@ func TestGroupNoTasks(t *testing.T) {
 	go cancel()
 
 	err := gr.Run(ctx)
+	assert.Error(t, err)
+}
+
+func TestGroupNoTasksNoErr(t *testing.T) {
+	var gr Group
+
+	ctx, cancel := context.WithCancel(context.Background())
+
+	go cancel()
+
+	err := gr.Run(ctx, IgnoreErrors(context.Canceled))
 	assert.NoError(t, err)
 }
 
@@ -30,6 +40,19 @@ func TestGroupNoError(t *testing.T) {
 	})
 
 	err := gr.Run(context.Background())
+	assert.ErrorIs(t, err, context.Canceled)
+}
+
+func TestGroupNoErrorNoCanceled(t *testing.T) {
+	var gr Group
+	//	gr := New()
+	//	gr.Signals = nil
+
+	gr.Add(func(ctx context.Context) error {
+		return nil
+	})
+
+	err := gr.Run(context.Background(), IgnoreErrors(context.Canceled))
 	assert.NoError(t, err)
 }
 
@@ -70,8 +93,5 @@ func TestStopGlobal(t *testing.T) {
 	go cancel()
 
 	err := gr.Run(ctx)
-	assert.Any(t, []assert.Checker{
-		is.ErrorIs(err, e),
-		is.ErrorIs(err, context.Canceled),
-	})
+	assert.ErrorIs(t, err, e)
 }
