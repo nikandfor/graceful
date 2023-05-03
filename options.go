@@ -89,6 +89,15 @@ func IgnoreErrors(errs ...error) Option {
 	}
 }
 
+func ErrorProcessor(f func(ctx context.Context, err error) error) Option {
+	return taskOpt{
+		baseOpt: optFunc(0),
+		f: func(t *task) {
+			t.processor = f
+		},
+	}
+}
+
 func (o taskOpt) taskOpt(t *task) {
 	if o.f == nil {
 		panic("not a task option")

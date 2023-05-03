@@ -32,6 +32,8 @@ type (
 		wrapError    string
 		ignoreErrors []error
 
+		processor func(ctx context.Context, err error) error
+
 		done chan struct{}
 	}
 )
@@ -39,6 +41,8 @@ type (
 var (
 	ErrKilled  = errors.New("killed")
 	ErrNoTasks = errors.New("no tasks")
+
+	ErrRestart = errors.New("restart")
 )
 
 func New() *Group {
@@ -94,28 +98,7 @@ func (g *Group) Run(ctx context.Context, opts ...Option) (err error) {
 
 		g.applyOpts(t, opts)
 
-		go func() {
-			defer close(t.done)
-
-			err := t.run(ctx)
-
-			if t.allowStop > 1 || t.allowStop > 0 && err == nil {
-				return
-			}
-
-			for _, ie := range t.ignoreErrors {
-				if errors.Is(err, ie) {
-					err = nil
-					break
-				}
-			}
-
-			if t.wrapError != "" {
-				err = errors.Wrap(err, t.wrapError)
-			}
-
-			errc <- err
-		}()
+		go g.taskRun(ctx, t, errc)
 	}
 
 	var sigc chan os.Signal
@@ -172,6 +155,37 @@ next:
 	}
 
 	return err
+}
+
+func (g *Group) taskRun(ctx context.Context, t *task, errc chan error) {
+	defer close(t.done)
+
+restart:
+	err := t.run(ctx)
+
+	if t.processor != nil {
+		err = t.processor(ctx, err)
+		if errors.Is(err, ErrRestart) {
+			goto restart
+		}
+	}
+
+	if t.allowStop > 1 || t.allowStop > 0 && err == nil {
+		return
+	}
+
+	for _, ie := range t.ignoreErrors {
+		if errors.Is(err, ie) {
+			err = nil
+			break
+		}
+	}
+
+	if t.wrapError != "" {
+		err = errors.Wrap(err, t.wrapError)
+	}
+
+	errc <- err
 }
 
 func (g *Group) ctxErr(ctx context.Context, opts []Option) error {
