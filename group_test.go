@@ -5,7 +5,7 @@ import (
 	"testing"
 
 	"github.com/nikandfor/assert"
-	"github.com/nikandfor/errors"
+	"tlog.app/go/errors"
 )
 
 func TestGroupNoTasksErr(t *testing.T) {

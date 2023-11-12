@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"path"
 
-	"github.com/nikandfor/loc"
+	"tlog.app/go/loc"
 )
 
 type (

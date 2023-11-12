@@ -5,7 +5,7 @@ import (
 	"os"
 	"os/signal"
 
-	"github.com/nikandfor/errors"
+	"tlog.app/go/errors"
 )
 
 type (
@@ -71,12 +71,12 @@ func (g *Group) Add(run func(context.Context) error, opts ...Option) {
 
 /*
 Plan:
-    * Run all tasks concurrently
-    * Wait for the first to finish
-    * Stop all other tasks (cancel context)
-    * Wait for all tasks to finish
-    * Kill if not finished
-	* Return the first non-nil error or nil
+  - Run all tasks concurrently
+  - Wait for the first to finish
+  - Stop all other tasks (cancel context)
+  - Wait for all tasks to finish
+  - Kill if not finished
+  - Return the first non-nil error or nil
 
 If one of Group.Signals is received all tasks are stopped.
 If Group.ForceIters more signals received Group.Run returns immediately.
