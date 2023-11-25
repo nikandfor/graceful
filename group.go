@@ -42,7 +42,7 @@ var (
 	ErrKilled  = errors.New("killed")
 	ErrNoTasks = errors.New("no tasks")
 
-	ErrRestart = errors.New("restart")
+	Restart = errors.New("restart")
 )
 
 func New() *Group {
@@ -165,7 +165,7 @@ restart:
 
 	if t.processor != nil {
 		err = t.processor(ctx, err)
-		if errors.Is(err, ErrRestart) {
+		if errors.Is(err, Restart) {
 			goto restart
 		}
 	}
