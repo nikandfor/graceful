@@ -58,8 +58,6 @@ func Sub() *Group { return &Group{} }
 
 func (g *Group) Add(run func(context.Context) error, opts ...Option) {
 	t := task{
-		//	name: name,
-		//	ctx:  ctx,
 		run:  run,
 		done: make(chan struct{}),
 	}
@@ -124,18 +122,18 @@ func (g *Group) Run(ctx context.Context, opts ...Option) (err error) {
 
 	toKill := g.ForceIters
 
-next:
+allTasks:
 	for _, t := range g.tasks {
 		for {
 			select {
 			case <-t.done:
-				continue next
+				continue allTasks
 			case <-sigc:
 				toKill--
 			}
 
 			if toKill <= 0 {
-				break next
+				break allTasks
 			}
 
 			g.forceStop(ctx, toKill)
@@ -181,7 +179,7 @@ restart:
 		}
 	}
 
-	if t.wrapError != "" {
+	if err != nil && t.wrapError != "" {
 		err = errors.Wrap(err, t.wrapError)
 	}
 

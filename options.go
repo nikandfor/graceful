@@ -84,7 +84,7 @@ func IgnoreErrors(errs ...error) Option {
 	return taskOpt{
 		baseOpt: optFunc(0),
 		f: func(t *task) {
-			t.ignoreErrors = errs
+			t.ignoreErrors = append(t.ignoreErrors, errs...)
 		},
 	}
 }
