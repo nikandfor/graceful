@@ -216,12 +216,6 @@ func (g *Group) applyOpts(t *task, opts []Option) {
 
 func (g *Group) stop(ctx context.Context) (err error) {
 	for _, t := range g.tasks {
-		select {
-		case <-t.done:
-			continue
-		default:
-		}
-
 		if t.stop == nil {
 			continue
 		}
