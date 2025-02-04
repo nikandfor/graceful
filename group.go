@@ -50,7 +50,7 @@ func New() *Group {
 		Signals: []os.Signal{os.Interrupt},
 		KillErr: ErrKilled,
 		//	NoTasksErr: ErrNoTasks,
-		ForceIters: 3,
+		ForceIters: 2,
 	}
 }
 
