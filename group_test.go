@@ -2,10 +2,8 @@ package graceful
 
 import (
 	"context"
+	"errors"
 	"testing"
-
-	"github.com/nikandfor/assert"
-	"tlog.app/go/errors"
 )
 
 func TestGroupNoTasksErr(t *testing.T) {
@@ -16,7 +14,9 @@ func TestGroupNoTasksErr(t *testing.T) {
 	go cancel()
 
 	err := gr.Run(ctx)
-	assert.Error(t, err)
+	if !errors.Is(err, context.Canceled) {
+		t.Errorf("expected context.Canceled: %v", err)
+	}
 }
 
 func TestGroupNoTasksNoErr(t *testing.T) {
@@ -27,7 +27,9 @@ func TestGroupNoTasksNoErr(t *testing.T) {
 	go cancel()
 
 	err := gr.Run(ctx, IgnoreErrors(context.Canceled))
-	assert.NoError(t, err)
+	if err != nil {
+		t.Errorf("should have been ignored: %v", err)
+	}
 }
 
 func TestGroupNoError(t *testing.T) {
@@ -40,7 +42,9 @@ func TestGroupNoError(t *testing.T) {
 	})
 
 	err := gr.Run(context.Background())
-	assert.ErrorIs(t, err, context.Canceled)
+	if !errors.Is(err, context.Canceled) {
+		t.Errorf("expected context.Canceled: %v", err)
+	}
 }
 
 func TestGroupNoErrorNoCanceled(t *testing.T) {
@@ -53,7 +57,9 @@ func TestGroupNoErrorNoCanceled(t *testing.T) {
 	})
 
 	err := gr.Run(context.Background(), IgnoreErrors(context.Canceled))
-	assert.NoError(t, err)
+	if err != nil {
+		t.Errorf("should have been ignored: %v", err)
+	}
 }
 
 func TestGroupSomeError(t *testing.T) {
@@ -68,7 +74,9 @@ func TestGroupSomeError(t *testing.T) {
 	})
 
 	err := gr.Run(context.Background())
-	assert.ErrorIs(t, err, e)
+	if !errors.Is(err, e) {
+		t.Errorf("expected %v, got %v", e, err)
+	}
 }
 
 func TestStopGlobal(t *testing.T) {
@@ -93,5 +101,13 @@ func TestStopGlobal(t *testing.T) {
 	go cancel()
 
 	err := gr.Run(ctx)
-	assert.ErrorIs(t, err, e)
+	if !errors.Is(err, e) {
+		t.Errorf("expected %v, got %v", e, err)
+	}
+}
+
+func TestBaseOption(t *testing.T) {
+	o := IgnoreErrors(context.Canceled)
+
+	t.Logf("option: %v", o)
 }

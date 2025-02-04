@@ -4,8 +4,7 @@ import (
 	"context"
 	"fmt"
 	"path"
-
-	"tlog.app/go/loc"
+	"runtime"
 )
 
 type (
@@ -29,13 +28,20 @@ type (
 )
 
 func optFunc(d int) baseOpt {
-	pc := loc.Caller(1 + d)
+	pc, _, _, ok := runtime.Caller(1 + d)
+	if !ok {
+		return baseOpt("<unknown>")
+	}
 
-	n, _, _ := pc.NameFileLine()
+	f := runtime.FuncForPC(pc)
+	if f == nil {
+		return baseOpt("<unknown>")
+	}
 
-	n = path.Ext(n)[1:]
+	name := f.Name()
+	name = path.Ext(name)[1:]
 
-	return baseOpt(n)
+	return baseOpt(name)
 }
 
 func (o baseOpt) String() string { return string(o) }

@@ -2,10 +2,10 @@ package graceful
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"os"
 	"os/signal"
-
-	"tlog.app/go/errors"
 )
 
 type (
@@ -180,7 +180,7 @@ restart:
 	}
 
 	if err != nil && t.wrapError != "" {
-		err = errors.Wrap(err, t.wrapError)
+		err = fmt.Errorf("%v: %w", t.wrapError, err)
 	}
 
 	errc <- err
@@ -199,8 +199,8 @@ func (g *Group) ctxErr(ctx context.Context, opts []Option) error {
 		}
 	}
 
-	if t.wrapError != "" {
-		err = errors.Wrap(err, t.wrapError)
+	if err != nil && t.wrapError != "" {
+		err = fmt.Errorf("%v: %w", t.wrapError, err)
 	}
 
 	return err
@@ -223,7 +223,6 @@ func (g *Group) stop(ctx context.Context) (err error) {
 		e := t.stop(ctx)
 		if err == nil {
 			err = e
-			//	err = errors.Wrap(e, "stop: %v", t.name)
 		}
 	}
 
